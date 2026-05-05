@@ -342,118 +342,26 @@ export default function Home() {
                 alert("Invalid barangay.");
                 return;
             }
-            const orderData = {
-                order_status: "Pending",
-                order_date: new Date().toISOString(),
-                order_price:
-                    finalPrice === 0
-                        ? (showtotalPrice + 40).toFixed(2)
-                        : finalPrice.toFixed(2),
+            const orderPayload = {
+                cartId: cartId,
                 message: message,
-                delivery_address: `${address?.street}, ${address?.barangay}, ${address?.city}, Davao Del Sur, ${address?.zipcode}`,
-                customerid: user.id,
-                voucherid: voucherId,
+                address: `${address?.street}, ${address?.barangay}, ${address?.city}, Davao Del Sur, ${address?.zipcode}`,
                 paymentMethod: paymentMethod,
                 payment_img: imageUrl ?? null,
+                voucherCode: voucherCode ?? null,
             };
 
-            const { data: orderInsertData, error: orderError } = await supabase
-                .from("orders")
-                .insert(orderData)
-                .select("orderid")
-                .single();
+            const response = await fetch("/api/orders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(orderPayload),
+            });
 
-            if (orderError) {
-                console.error("Error placing order:", orderError);
+            if (!response.ok) {
+                const errData = await response.json();
+                console.error("Error placing order via API:", errData.error);
+                alert(`Error placing order: ${errData.error}`);
                 return;
-            }
-
-            const orderId = orderInsertData?.orderid;
-
-            if (!orderId) {
-                console.error("Order ID not returned after order insertion.");
-                return;
-            }
-
-            if (voucherId) {
-                const { error: updateVoucherError } = await supabase
-                    .from("vouchers")
-                    .update({ status: "used" })
-                    .eq("voucherid", voucherId);
-
-                if (updateVoucherError) {
-                    console.error(
-                        "Error updating voucher status:",
-                        updateVoucherError,
-                    );
-                    return;
-                }
-            }
-
-            const { data: cartItems, error: cartItemsError } = await supabase
-                .from("cart_items")
-                .select("*, product:productid(price)")
-                .eq("cartid", cartId);
-
-            if (cartItemsError) {
-                console.error("Error fetching cart items:", cartItemsError);
-                return;
-            }
-
-            if (cartItems && cartItems.length > 0) {
-                const orderDetailsData = [];
-
-                for (const item of cartItems) {
-                    const { data: discountData, error: discountError } =
-                        await supabase
-                            .from("discount")
-                            .select("newprice")
-                            .eq("productid", item.productid)
-                            .lte("start_date", new Date().toISOString())
-                            .gte("end_date", new Date().toISOString())
-                            .single();
-
-                    let finalProdPrice;
-
-                    if (discountData && !discountError) {
-                        finalProdPrice = discountData.newprice;
-                    } else {
-                        finalProdPrice = item.product?.price;
-                    }
-
-                    orderDetailsData.push({
-                        orderid: orderId,
-                        productid: item.productid,
-                        price: item.total_price,
-                        quantity: item.quantity,
-                        prod_price: finalProdPrice,
-                    });
-                }
-
-                const { error: orderDetailsError } = await supabase
-                    .from("orderdetails")
-                    .insert(orderDetailsData);
-
-                if (orderDetailsError) {
-                    console.error(
-                        "Error inserting order details:",
-                        orderDetailsError,
-                    );
-                    return;
-                }
-
-                const { error: deleteCartItemsError } = await supabase
-                    .from("cart_items")
-                    .delete()
-                    .eq("cartid", cartId);
-
-                if (deleteCartItemsError) {
-                    console.error(
-                        "Error deleting cart items:",
-                        deleteCartItemsError,
-                    );
-                    return;
-                }
             }
 
             setSuccessModal(true);
